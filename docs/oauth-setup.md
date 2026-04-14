@@ -53,7 +53,8 @@ MCP clients handle the OAuth flow automatically — when connecting to the serve
 | **claude.ai** | Yes | Via Settings → Custom Connectors. |
 | **Codex CLI** | Yes | Use `codex mcp login`. Configurable callback port |
 | **Kiro** | Yes | Configurable `oauth.redirectUri`. Implementation is newer |
-| **Gemini CLI** | Yes | Via OAuth Proxy (strips `resource` parameter) |
+| **Antigravity** | Yes | Full OAuth 2.1 via manual registration. Requires stripping legacy `clientId` from config. |
+| **Gemini CLI** | Yes | Via OAuth Proxy (strips `resource` parameter). |
 
 ### Redirect URIs
 
@@ -65,6 +66,8 @@ Set this in Redmine's OAuth app (Step 1) to match your client:
 | Claude Code | `http://127.0.0.1:PORT/oauth/callback` |
 | claude.ai | `https://claude.com/api/mcp/auth_callback` |
 | Codex CLI | `http://127.0.0.1:PORT/callback` |
+| Antigravity | `http://127.0.0.1:33418/` |
+| Gemini CLI | `http://127.0.0.1:PORT/` (configurable) |
 | Kiro | Configurable via `oauth.redirectUri` |
 
 > **Note on DCR:** Some clients (Claude Desktop, VS Code) expect Dynamic Client Registration. Redmine's Doorkeeper does not support DCR, so you must pre-register the app manually (Step 1) and configure the client with the `client_id`/`client_secret`.
@@ -77,7 +80,91 @@ To resolve this, the MCP server includes a built-in **OAuth Proxy**:
 1. It intercepts the authorization request at `/proxy/authorize`, strips the `resource` field, and redirects to Redmine.
 2. It intercepts the token exchange at `/proxy/token`, strips the `resource` field from the POST body, and forwards it to Redmine.
 
+> **Note for Gemini CLI:** You must explicitly define the `redirectUri` in your `mcp_config.json` (e.g., `"redirectUri": "http://127.0.0.1:7777/"`) and ensure this matches the Redirect URI registered in Redmine.
+
 This is handled automatically when `REDMINE_AUTH_MODE=oauth` is enabled.
+
+
+## Antigravity
+### Managing MCP OAuth Credentials in Antigravity
+
+## Adding a Custom MCP Server
+
+1. Click the **"…"** dropdown in the Agent side panel
+2. Select **MCP Servers** → **Manage MCP Servers** → **View raw config**
+3. Edit `mcp_config.json`:
+
+```json
+{
+    "mcpServers": {
+        "your-server": {
+            "serverUrl": "https://your-mcp-server.com/mcp",
+            "oauth": {
+                "redirectUri": "http://127.0.0.1:33418/",
+                "scopes": ["scope1", "scope2"]
+            },
+            "disabled": false
+        }
+    }
+}
+```
+
+4. Save and restart Antigravity — it will prompt for Client ID and Secret on first connect.
+
+> **Note:** The `clientId` and `clientSecret` fields in `mcp_config.json` are **not supported** in the top-level `oauth` object schema for Antigravity. Instead, Antigravity prompts for these credentials in the UI upon the first connection attempt and securely caches them in its internal database.
+
+---
+
+## Resetting / Updating Cached OAuth Credentials
+
+Antigravity stores OAuth credentials in a SQLite database. If you need to change credentials (e.g. you entered wrong ones), you must clear them manually.
+
+### Step 1 — Fully close Antigravity
+
+Make sure Antigravity is not running before editing the database.
+
+### Step 2 — Delete cached credentials
+
+```bash
+sqlite3 ~/.config/Antigravity/User/globalStorage/state.vscdb \
+  "DELETE FROM ItemTable WHERE key LIKE '%dynamicAuthProvider%';"
+
+sqlite3 ~/.config/Antigravity/User/globalStorage/state.vscdb.backup \
+  "DELETE FROM ItemTable WHERE key LIKE '%dynamicAuthProvider%';"
+```
+
+### Step 3 — Verify they are gone
+
+```bash
+sqlite3 ~/.config/Antigravity/User/globalStorage/state.vscdb \
+  "SELECT key FROM ItemTable WHERE key LIKE '%dynamicAuthProvider%';"
+```
+
+Should return empty output.
+
+### Step 4 — Restart Antigravity
+
+Antigravity will prompt for Client ID and Secret again on next MCP connect.
+
+---
+
+## Inspecting Cached Credentials
+
+To see all MCP/OAuth related entries currently cached:
+
+```bash
+sqlite3 ~/.config/Antigravity/User/globalStorage/state.vscdb \
+  "SELECT key FROM ItemTable WHERE key LIKE '%mcp%' OR key LIKE '%oauth%' OR key LIKE '%dynamicAuthProvider%';"
+```
+
+---
+
+## Notes
+
+- **Antigravity flows:** Unlike some clients that attempt Dynamic Client Registration (DCR), Antigravity requires manual app registration in Redmine (Step 1). It ignores `clientId`/`clientSecret` keys if manually added to `mcp_config.json` (as they are not part of its recognized schema) and will prompt the user to input them during the initial handshake.
+- Cached credentials persist across restarts until manually cleared from the SQLite DB.
+- On **macOS**, the database is at `~/Library/Application Support/Antigravity/User/globalStorage/state.vscdb`.
+- On **Windows**, it is at `%APPDATA%\Antigravity\User\globalStorage\state.vscdb`.
 
 ## Migrating from Legacy Mode
 
