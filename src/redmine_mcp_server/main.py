@@ -173,10 +173,17 @@ async def oauth_token_proxy(request: Request):
     # Gemini also sends 'resource' in the POST body; Redmine rejects this too
     payload.pop("resource", None)
 
+    # Forward Authorization header if present (for client_secret_basic)
+    headers = {}
+    auth_header = request.headers.get("Authorization")
+    if auth_header:
+        headers["Authorization"] = auth_header
+
     async with httpx.AsyncClient() as client:
         response = await client.post(
             f"{REDMINE_URL}/oauth/token",
             data=payload,
+            headers=headers,
             timeout=10
         )
         return JSONResponse(
