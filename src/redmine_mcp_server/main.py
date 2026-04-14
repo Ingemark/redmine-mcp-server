@@ -16,8 +16,9 @@ import os
 import uvicorn
 import httpx
 from importlib.metadata import version, PackageNotFoundError
+import urllib.parse
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, RedirectResponse
 
 # Configure basic logging before importing modules that log during init
 logging.basicConfig(
@@ -70,9 +71,9 @@ async def oauth_authorization_server(request: Request):
     return JSONResponse(
         {
             "issuer": REDMINE_MCP_BASE_URL,
-            "authorization_endpoint": f"{REDMINE_URL}/oauth/authorize",
-            "token_endpoint": f"{REDMINE_URL}/oauth/token",
-            "revocation_endpoint": f"{REDMINE_URL}/oauth/revoke",
+            "authorization_endpoint": f"{REDMINE_MCP_BASE_URL}/proxy/authorize",
+            "token_endpoint": f"{REDMINE_MCP_BASE_URL}/proxy/token",
+            "revocation_endpoint": f"{REDMINE_MCP_BASE_URL}/revoke",
             "response_types_supported": ["code"],
             "grant_types_supported": [
                 "authorization_code",
@@ -152,6 +153,36 @@ async def oauth_authorization_server(request: Request):
             ],
         }
     )
+
+
+
+async def oauth_authorize_proxy(request: Request):
+    """GET Proxy: Cleans the Browser URL for the login page by stripping 'resource'."""
+    params = dict(request.query_params)
+    # The 'resource' key is what triggers the 400 error in Doorkeeper
+    params.pop("resource", None)
+
+    query_string = urllib.parse.urlencode(params)
+    return RedirectResponse(url=f"{REDMINE_URL}/oauth/authorize?{query_string}")
+
+
+async def oauth_token_proxy(request: Request):
+    """POST Proxy: Cleans the background 'Code-for-Token' exchange by stripping 'resource'."""
+    form_data = await request.form()
+    payload = dict(form_data)
+    # Gemini also sends 'resource' in the POST body; Redmine rejects this too
+    payload.pop("resource", None)
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{REDMINE_URL}/oauth/token",
+            data=payload,
+            timeout=10
+        )
+        return JSONResponse(
+            content=response.json(),
+            status_code=response.status_code
+        )
 
 
 async def revoke_token(request: Request):
@@ -240,6 +271,8 @@ def register_oauth_routes(target_app):
         oauth_authorization_server,
         methods=["GET"],
     )
+    target_app.add_route("/proxy/authorize", oauth_authorize_proxy, methods=["GET"])
+    target_app.add_route("/proxy/token", oauth_token_proxy, methods=["POST"])
     target_app.add_route("/revoke", revoke_token, methods=["POST"])
 
 

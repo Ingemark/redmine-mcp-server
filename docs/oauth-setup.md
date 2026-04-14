@@ -53,6 +53,7 @@ MCP clients handle the OAuth flow automatically — when connecting to the serve
 | **claude.ai** | Yes | Via Settings → Custom Connectors. |
 | **Codex CLI** | Yes | Use `codex mcp login`. Configurable callback port |
 | **Kiro** | Yes | Configurable `oauth.redirectUri`. Implementation is newer |
+| **Gemini CLI** | Yes | Via OAuth Proxy (strips `resource` parameter) |
 
 ### Redirect URIs
 
@@ -68,6 +69,16 @@ Set this in Redmine's OAuth app (Step 1) to match your client:
 
 > **Note on DCR:** Some clients (Claude Desktop, VS Code) expect Dynamic Client Registration. Redmine's Doorkeeper does not support DCR, so you must pre-register the app manually (Step 1) and configure the client with the `client_id`/`client_secret`.
 
+### Gemini CLI & RFC 8707 Compatibility (OAuth Proxy)
+
+The Gemini CLI follows RFC 8707 / RFC 9728 and includes a `resource` parameter in its OAuth handshake. Redmine 6.1 (using Doorkeeper) strictly rejects any unknown parameters, including `resource`, with a `400 Bad Request` error.
+
+To resolve this, the MCP server includes a built-in **OAuth Proxy**:
+1. It intercepts the authorization request at `/proxy/authorize`, strips the `resource` field, and redirects to Redmine.
+2. It intercepts the token exchange at `/proxy/token`, strips the `resource` field from the POST body, and forwards it to Redmine.
+
+This is handled automatically when `REDMINE_AUTH_MODE=oauth` is enabled.
+
 ## Migrating from Legacy Mode
 
 1. Set `REDMINE_AUTH_MODE=oauth` and restart — no downtime needed
@@ -81,5 +92,6 @@ Set this in Redmine's OAuth app (Step 1) to match your client:
 | `{"error": "unauthorized"}` | Missing Bearer token | Check client is sending `Authorization` header |
 | `{"error": "invalid_token"}` | Token expired/revoked | Test directly: `curl -H "Authorization: Bearer <token>" REDMINE_URL/users/current.json` |
 | Discovery endpoints 404 | Not in OAuth mode | Ensure `REDMINE_AUTH_MODE=oauth` is set |
+| `400 Bad Request` from Redmine | Parameter mismatch | Usually caused by `resource` parameter; fixed by the built-in Proxy |
 | Token works in Redmine but not MCP | Wrong `REDMINE_URL` | In Docker, use internal hostname (e.g., `http://redmine:3000`) |
 | "Applications" menu missing | Redmine too old | Requires Redmine 6.1+ |
