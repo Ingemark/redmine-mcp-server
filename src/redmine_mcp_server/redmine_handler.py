@@ -923,6 +923,7 @@ def _issue_to_dict(issue: Any, include_custom_fields: bool = False) -> Dict[str,
     status = getattr(issue, "status", None)
     priority = getattr(issue, "priority", None)
     author = getattr(issue, "author", None)
+    tracker = getattr(issue, "tracker", None)
 
     issue_dict = {
         "id": getattr(issue, "id", None),
@@ -936,6 +937,9 @@ def _issue_to_dict(issue: Any, include_custom_fields: bool = False) -> Dict[str,
         ),
         "priority": (
             {"id": priority.id, "name": priority.name} if priority is not None else None
+        ),
+        "tracker": (
+            {"id": tracker.id, "name": tracker.name} if tracker is not None else None
         ),
         "author": (
             {"id": author.id, "name": author.name} if author is not None else None
@@ -1219,6 +1223,7 @@ def _issue_to_dict_selective(
     status = getattr(issue, "status", None)
     priority = getattr(issue, "priority", None)
     author = getattr(issue, "author", None)
+    tracker = getattr(issue, "tracker", None)
 
     all_fields = {
         "id": getattr(issue, "id", None),
@@ -1232,6 +1237,9 @@ def _issue_to_dict_selective(
         ),
         "priority": (
             {"id": priority.id, "name": priority.name} if priority is not None else None
+        ),
+        "tracker": (
+            {"id": tracker.id, "name": tracker.name} if tracker is not None else None
         ),
         "author": (
             {"id": author.id, "name": author.name} if author is not None else None
@@ -1621,6 +1629,41 @@ async def list_project_issue_custom_fields(
 
 
 @mcp.tool()
+async def list_project_trackers(
+    project_id: Union[str, int],
+) -> List[Dict[str, Any]]:
+    """List trackers enabled for a Redmine project.
+
+    Args:
+        project_id: Project identifier (ID number or string identifier).
+
+    Returns:
+        A list of tracker dictionaries with ``id`` and ``name`` keys.
+        On failure a list containing a single dictionary with an ``"error"``
+        key is returned.
+
+    Examples:
+        >>> await list_project_trackers("my-project")
+        [{"id": 1, "name": "Bug"}, {"id": 2, "name": "Feature"}, ...]
+    """
+    try:
+        project = _get_redmine_client().project.get(project_id, include="trackers")
+        trackers = getattr(project, "trackers", None) or []
+        return [
+            {"id": getattr(t, "id", None), "name": getattr(t, "name", "")}
+            for t in trackers
+        ]
+    except Exception as e:
+        return [
+            _handle_redmine_error(
+                e,
+                f"listing trackers for project {project_id}",
+                {"resource_type": "project", "resource_id": project_id},
+            )
+        ]
+
+
+@mcp.tool()
 async def list_redmine_versions(
     project_id: Union[str, int],
     status_filter: Optional[str] = None,
@@ -1710,7 +1753,7 @@ async def list_redmine_issues(
             metadata (default: False).
         fields: List of field names to include in results (default: all).
             Available: id, subject, description, project, status, priority,
-            author, assigned_to, created_on, updated_on.
+            tracker, author, assigned_to, created_on, updated_on.
         filters: Additional Redmine API filter parameters as a dict. Use this
             for any filter not listed above (e.g., {"cf_1": "value"}).
 
@@ -1918,7 +1961,7 @@ async def search_redmine_issues(
             metadata (default: False).
         fields: List of field names to include in results (default: all).
             Available: id, subject, description, project, status, priority,
-            author, assigned_to, created_on, updated_on.
+            tracker, author, assigned_to, created_on, updated_on.
         scope: Search scope. Values: "all", "my_project", "subprojects".
         open_issues: Search only open issues (default: False).
         options: Additional Redmine Search API parameters as a dict.

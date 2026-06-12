@@ -61,6 +61,12 @@ class TestIssueToDictSelective:
         mock_assigned.name = "Jane Smith"
         mock_issue.assigned_to = mock_assigned
 
+        # Mock tracker
+        mock_tracker = Mock()
+        mock_tracker.id = 4
+        mock_tracker.name = "Bug"
+        mock_issue.tracker = mock_tracker
+
         # Mock timestamps
         mock_issue.created_on = datetime(2024, 1, 15, 10, 30, 0)
         mock_issue.updated_on = datetime(2024, 1, 16, 14, 45, 0)
@@ -110,7 +116,7 @@ class TestIssueToDictSelective:
         expected = _issue_to_dict(mock_issue)
 
         assert set(result.keys()) == set(expected.keys())
-        assert len(result) == 10  # All 10 fields
+        assert len(result) == 11  # All 11 fields
         assert "id" in result
         assert "subject" in result
         assert "description" in result
@@ -121,7 +127,7 @@ class TestIssueToDictSelective:
         expected = _issue_to_dict(mock_issue)
 
         assert set(result.keys()) == set(expected.keys())
-        assert len(result) == 10
+        assert len(result) == 11
 
     def test_all_keyword_returns_all_fields(self, mock_issue):
         """Test that fields=["all"] returns all fields."""
@@ -129,7 +135,7 @@ class TestIssueToDictSelective:
         expected = _issue_to_dict(mock_issue)
 
         assert set(result.keys()) == set(expected.keys())
-        assert len(result) == 10
+        assert len(result) == 11
 
     def test_single_field_id(self, mock_issue):
         """Test selecting only the id field."""
@@ -229,6 +235,7 @@ class TestIssueToDictSelective:
             "project",
             "status",
             "priority",
+            "tracker",
             "author",
             "assigned_to",
             "created_on",
@@ -238,7 +245,7 @@ class TestIssueToDictSelective:
         expected = _issue_to_dict(mock_issue)
 
         assert set(result.keys()) == set(expected.keys())
-        assert len(result) == 10
+        assert len(result) == 11
 
     def test_invalid_field_name_ignored(self, mock_issue):
         """Test that invalid field names are silently ignored."""
@@ -337,7 +344,7 @@ class TestIssueToDictSelective:
         # Minimal should have fewer keys
         assert len(minimal_fields_result) < len(all_fields_result)
         assert len(minimal_fields_result) == 2
-        assert len(all_fields_result) == 10
+        assert len(all_fields_result) == 11
 
     def test_case_sensitive_field_names(self, mock_issue):
         """Test that field names are case-sensitive."""
@@ -346,6 +353,43 @@ class TestIssueToDictSelective:
         # Case doesn't match, so all should be ignored
         assert result == {}
         assert len(result) == 0
+
+    def test_single_field_tracker(self, mock_issue):
+        """Test selecting only the tracker field."""
+        result = _issue_to_dict_selective(mock_issue, ["tracker"])
+
+        assert result == {"tracker": {"id": 4, "name": "Bug"}}
+        assert len(result) == 1
+
+    def test_tracker_none_when_missing(self):
+        """Test that tracker is None when not present on issue."""
+        mock_issue = Mock()
+        mock_issue.id = 99
+        mock_issue.subject = "No tracker"
+        mock_issue.description = None
+        mock_project = Mock()
+        mock_project.id = 1
+        mock_project.name = "P"
+        mock_issue.project = mock_project
+        mock_status = Mock()
+        mock_status.id = 1
+        mock_status.name = "New"
+        mock_issue.status = mock_status
+        mock_priority = Mock()
+        mock_priority.id = 1
+        mock_priority.name = "Normal"
+        mock_issue.priority = mock_priority
+        mock_author = Mock()
+        mock_author.id = 1
+        mock_author.name = "Author"
+        mock_issue.author = mock_author
+        mock_issue.assigned_to = None
+        mock_issue.tracker = None
+        mock_issue.created_on = None
+        mock_issue.updated_on = None
+
+        result = _issue_to_dict_selective(mock_issue, ["id", "tracker"])
+        assert result["tracker"] is None
 
     def test_whitespace_in_field_names(self, mock_issue):
         """Test that whitespace in field names doesn't match."""
